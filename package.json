@@ -1,0 +1,21 @@
+{
+  "name": "cis-processor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node ./index.js --id $1",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Stanislav Skubal",
+  "license": "ISC",
+  "dependencies": {
+    "basic-ftp": "^5.0.2",
+    "create-symlink": "^1.0.0",
+    "csv-reader": "^1.0.11",
+    "iconv-lite": "^0.6.3",
+    "minimist": "^1.2.8",
+    "unzipper": "^0.10.11"
+  }
+}
