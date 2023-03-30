@@ -55,8 +55,8 @@ async function run(icoDopravce) {
     }
     fs.mkdirSync(outputPath);
 
-    // await ftpDownload(zipFile);
-    // await unzip(zipFile, unpackedPath);
+    await ftpDownload(zipFile);
+    await unzip(zipFile, unpackedPath);
     await getByDopravce(icoDopravce, unpackedPath, outputPath);
 }
 
@@ -86,11 +86,9 @@ async function unzip(zipFile, outputPath) {
 async function getByDopravce(idDopravce, zipPath, outputPath) {
     console.log({ getByDopravce: { idDopravce, zipPath, outputPath } });
     await fs.readdirSync(zipPath, { withFileTypes: true }).forEach(dirent => {
-        // console.log({dirent: {name: dirent.name, isDirectory: dirent.isDirectory()}})
         if (!dirent.isDirectory()) {
             try {
                 var file = dirent.name;
-                // console.log({ readdirSync: { zipPath, file } });
                 var filePath = zipPath + '/' + file;
                 fs.createReadStream(filePath)
                     .pipe(unzipper.ParseOne('Linky\.txt'))
@@ -112,7 +110,7 @@ async function getByDopravce(idDopravce, zipPath, outputPath) {
         }
     });
 
-    // TODO: zavolat `python3 jdf2gtfs.py --db_name gtfs --db_server localhost --db_user gtfs --db_password gtfs --zip --stopids --stopnames ./script/temp/filtered/ output2/`
+    // TODO: až bude prolinkováno, zavolat `python3 jdf2gtfs.py --db_name gtfs --db_server localhost --db_user gtfs --db_password gtfs --zip --stopids --stopnames ./script/temp/filtered/ output2/`
 }
 
 function filterObject(obj, callback) {
