@@ -18,10 +18,10 @@ Pokud dopravce neexistuje, skript vypíše seznam známých dopravců.
 
 ## jdf2gtfs
 
-Po spuštění skriptu se dá nad výstupem (adresář `temp/filtered`) zavolat skript [`jdf2gtfs`](https://github.com/masopust/jdf2gtfs/):
+Po spuštění skriptu se dá nad výstupem (adresář `temp/output`) zavolat skript [`jdf2gtfs`](https://github.com/masopust/jdf2gtfs/):
 
 ```bash
-python3 jdf2gtfs.py --db_name gtfs --db_server localhost --db_user gtfs --db_password gtfs --zip --stopids --stopnames temp/filtered/ output/
+python3 jdf2gtfs.py --db_name gtfs --db_server localhost --db_user gtfs --db_password gtfs --zip --stopids --stopnames temp/output/ output/
 ```
 
 ### konfigurace `jdf2gtfs`:

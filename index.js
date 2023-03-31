@@ -1,13 +1,18 @@
 #!/usr/bin/node
 
-import * as ftp from "basic-ftp";
-import fs from "fs";
-import unzipper from "unzipper";
+import * as ftp from 'basic-ftp';
 import CsvReadableStream from 'csv-reader';
+import {
+    mkdir,
+    open,
+    readdir,
+    readFile,
+    rm,
+    symlink,
+} from 'fs/promises';
 import iconv from 'iconv-lite';
-import { readFile } from 'fs/promises';
 import minimist from 'minimist';
-import createSymlink from 'create-symlink';
+import unzipper from 'unzipper';
 
 const config = JSON.parse(
     await readFile(
@@ -15,105 +20,102 @@ const config = JSON.parse(
     )
 );
 
-var argv = minimist(process.argv.slice(2));
-if (argv.id) {
-    if (argv.id in config.dopravci) {
-        run(argv.id)
-    } else {
-        var filtered = filterObject(config.dopravci, (val, key) => key.toLowerCase().includes(argv.id.toString().toLowerCase()) || val.toLowerCase().includes(argv.id.toString().toLowerCase()));
-        var found = Object.keys(filtered);
-        if (found.length == 1) {
-            run(found[0]);
-        } else if (found.length > 1) {
-            console.error('Ambiguous transport service.');
-            console.log('Maybe you meant:', filtered);
+init();
+
+async function init() {
+    var argv = minimist(process.argv.slice(2));
+    var transportCompanyId = argv.id;
+    if (transportCompanyId) {
+        if (transportCompanyId in config.transportCompanies) {
+            await run(transportCompanyId)
         } else {
-            console.error('Unknown transport service.');
-            console.log('List of available transport services:', config.dopravci);
+            var filteredTransportCompanies = filterObject(config.transportCompanies, (val, key) => [val, key].some(value => value.toLowerCase().includes(transportCompanyId.toString().toLowerCase())));
+            var found = Object.keys(filteredTransportCompanies);
+            if (found.length == 1) {
+                console.log('List of transport lines for ' + config.transportCompanies[transportCompanyId] + ':');
+                await run(found[0]);
+            } else if (found.length > 1) {
+                console.error('Ambiguous transport company.');
+                console.log('Maybe you meant:', filteredTransportCompanies);
+            } else {
+                console.error('Unknown transport company.');
+                console.log('List of available transport companies:', config.transportCompanies);
+            }
         }
+    } else {
+        console.error('No transport company defined.')
+        console.log('List of available transport companies:', config.transportCompanies);
     }
-} else {
-    console.error('No transport service defined.')
-    console.log('List of available transport services:', config.dopravci);
 }
 
-async function run(icoDopravce) {
-    console.log('Results for ', config.dopravci[icoDopravce]);
-
-    const tempPath = "temp";
-    const zipFile = tempPath + "/JDF.zip";
-    const unpackedPath = tempPath + "/unpacked";
-
-    var outputPath = tempPath + "/filtered";
-
-    if (!fs.existsSync(unpackedPath + "/")) {
-        fs.mkdirSync(unpackedPath);
-    }
-
-    if (fs.existsSync(outputPath + "/")) {
-        fs.rmSync(outputPath, { recursive: true });
-    }
-    fs.mkdirSync(outputPath);
-
-    await ftpDownload(zipFile);
-    await unzip(zipFile, unpackedPath);
-    await getByDopravce(icoDopravce, unpackedPath, outputPath);
+async function run(transportCompanyId) {
+    await preparePaths();
+    await ftpDownload(config.ftp.connection, config.ftp.remoteFile, config.paths.zip);
+    await unzip(config.paths.zip, config.paths.unpacked);
+    await getTransportLines(transportCompanyId, config.paths.unpacked, config.paths.output);
 }
 
-async function ftpDownload(destinationPath) {
+async function preparePaths() {
+    await mkdir(config.paths.unpacked, { recursive: true });
+    await rm(config.paths.output, { recursive: true, force: true });
+    await mkdir(config.paths.output, { recursive: true });
+}
+
+async function getTransportLines(transportCompanyId, zipPath, outputPath) {
+    const files = await readdir(zipPath, { withFileTypes: true });
+    var counter = 0;
+    await asyncForEach(files, async dirent => {
+        if (!dirent.isDirectory()) {
+            ++counter;
+            try {
+                var file = dirent.name;
+                var filePath = zipPath + '/' + file;
+
+                const fd = await open(filePath);
+                fd.createReadStream()
+                    .pipe(unzipper.ParseOne(config.pathRegexp))
+                    .pipe(iconv.decodeStream(config.ftp.encoding))
+                    .pipe(new CsvReadableStream({ parseNumbers: true, parseBooleans: true, trim: true }))
+                    .on('data', async function (row) {
+                        if (row[2] == transportCompanyId) {
+                            await symlink("../../" + filePath, outputPath + "/" + file);
+                            console.log("\t- " + row[1]);
+                        }
+                    });
+            }
+            catch (err) {
+                console.error(err);
+            }
+        }
+    });
+}
+
+async function ftpDownload(ftpConfig, fromRemotePath, destination) {
     const client = new ftp.Client()
-    client.ftp.verbose = true
+    client.ftp.verbose = false
     try {
-        await client.access({
-            host: "ftp.cisjr.cz",
-            secure: false
-        })
-        console.log(await client.list())
-        await client.downloadTo(destinationPath, "JDF/JDF.zip")
+        await client.access(ftpConfig)
+        await client.downloadTo(destination, fromRemotePath)
     }
     catch (err) {
-        console.log(err)
+        error.log(err)
     }
     client.close()
 }
 
 async function unzip(zipFile, outputPath) {
-    console.log({ unzip: { zipFile, outputPath } });
-    await fs.createReadStream(zipFile)
+    const fd = await open(zipFile);
+    fd.createReadStream()
         .pipe(unzipper.Extract({ path: outputPath }));
-}
-
-async function getByDopravce(idDopravce, zipPath, outputPath) {
-    console.log({ getByDopravce: { idDopravce, zipPath, outputPath } });
-    await fs.readdirSync(zipPath, { withFileTypes: true }).forEach(dirent => {
-        if (!dirent.isDirectory()) {
-            try {
-                var file = dirent.name;
-                var filePath = zipPath + '/' + file;
-                fs.createReadStream(filePath)
-                    .pipe(unzipper.ParseOne('Linky\.txt'))
-                    .pipe(iconv.decodeStream('win1250'))
-                    .pipe(new CsvReadableStream({ parseNumbers: true, parseBooleans: true, trim: true }))
-                    .on('data', function (row) {
-                        if (row[2] == idDopravce) {
-                            createSymlink("../../" + filePath, outputPath + "/" + file).then(() => {
-                                fs.realpathSync(outputPath);
-                            });
-
-                            console.log(file + "\t" + row[1]);
-                        }
-                    });
-            }
-            catch (err) {
-                console.log(err)
-            }
-        }
-    });
-
-    // TODO: až bude prolinkováno, zavolat `python3 jdf2gtfs.py --db_name gtfs --db_server localhost --db_user gtfs --db_password gtfs --zip --stopids --stopnames ./script/temp/filtered/ output2/`
 }
 
 function filterObject(obj, callback) {
     return Object.fromEntries(Object.entries(obj).
         filter(([key, val]) => callback(val, key)));
+}
+
+async function asyncForEach(array, callback) {
+    for (let index = 0; index < array.length; index++) {
+        await callback(array[index], index, array);
+    }
 }
