@@ -9,8 +9,8 @@
     },
     "paths": {
         "zip": "temp/JDF.zip",
-        "unpacked": "temp/unpacked",
-        "output": "temp/output"
+        "unpacked": "temp/unpacked/",
+        "output": "temp/output/"
     },
     "pathRegexp": "Linky\\.txt",
     "transportCompanies": {
